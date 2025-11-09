@@ -18,7 +18,7 @@ export class RouteRepoPrisma implements RouteRepository {
     }
 
     async setBaseline(id: number): Promise<Route> {
-        await this.prisma.routes.updateMany({ data: {is_baseline: false }, where: { is_baseline: true }});
+        await this.prisma.routes.updateMany({ data: { is_baseline: false }, where: { is_baseline: true }});
         return this.prisma.routes.update({ where: { id }, data: { is_baseline: true }});
     }
 }
