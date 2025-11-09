@@ -1,0 +1,19 @@
+# Node modules
+node_modules/
+npm-debug.log
+yarn-error.log
+pnpm-lock.yaml
+
+# Environment files
+.env
+.env.local
+
+# Build outputs
+dist/
+build/
+coverage/
+.prisma/
+
+# Logs
+logs
+*.log
