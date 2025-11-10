@@ -2,6 +2,7 @@ import { useState } from "react";
 import RoutesTab from "./adapters/ui/RoutesTab";
 import CompareTab from "./adapters/ui/CompareTab";
 import BankingTab from "./adapters/ui/BankingTab";
+import PoolingTab from "./adapters/ui/PoolingTab";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState("routes");
@@ -26,7 +27,7 @@ export default function App() {
         {activeTab === "routes" && <RoutesTab />}
         {activeTab === "compare" && <p className="p-4"><CompareTab/></p>}
         {activeTab === "banking" && <p className="p-4"><BankingTab/></p>}
-        {activeTab === "pooling" && <p className="p-4">Pooling tab coming soon</p>}
+        {activeTab === "pooling" && <p className="p-4"><PoolingTab/></p>}
       </main>
     </div>
   );
