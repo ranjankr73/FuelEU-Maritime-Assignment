@@ -1,35 +1,32 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import { useState } from "react";
+import RoutesTab from "./adapters/ui/RoutesTab";
+// We’ll add CompareTab, BankingTab, PoolingTab later
 
-function App() {
-  const [count, setCount] = useState(0)
+export default function App() {
+  const [activeTab, setActiveTab] = useState("routes");
 
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
-}
+    <div className="min-h-screen bg-gray-50">
+      <nav className="flex gap-4 p-4 bg-white border-b">
+        {["routes", "compare", "banking", "pooling"].map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`capitalize px-4 py-2 rounded-md ${
+              activeTab === tab ? "bg-blue-600 text-white" : "bg-gray-100"
+            }`}
+          >
+            {tab}
+          </button>
+        ))}
+      </nav>
 
-export default App
+      <main>
+        {activeTab === "routes" && <RoutesTab />}
+        {activeTab === "compare" && <p className="p-4">Compare tab coming soon</p>}
+        {activeTab === "banking" && <p className="p-4">Banking tab coming soon</p>}
+        {activeTab === "pooling" && <p className="p-4">Pooling tab coming soon</p>}
+      </main>
+    </div>
+  );
+}
