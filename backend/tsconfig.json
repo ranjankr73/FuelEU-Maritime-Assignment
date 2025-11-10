@@ -43,5 +43,5 @@
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["src", "src/infrastructure/seed.ts"]
+  "include": ["src", "src/infrastructure/db/seed.ts"]
 }

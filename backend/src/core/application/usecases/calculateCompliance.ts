@@ -1,23 +1,43 @@
-import { PrismaClient } from "@prisma/client";
+import { ComplianceBalance } from "../../domain/ComplianceBalance";
 import { Route } from "../../domain/Route";
-import { computeCB } from "./computeCB";
+import { IShipComplianceRepo } from "../../ports/outbound/IShipComplianceRepo";
+import { ValidationError } from "../../../shared/errors/DomainError";
 
-const prisma = new PrismaClient();
+export class CalculateCompliance {
+  constructor(private complianceRepository: IShipComplianceRepo) {}
 
-export const calculateCompliance = async (route: Route): Promise<{ cb_gco2eq: number, status: "Surplus" | "Deficit" | "Neutral" }> => {
-    const cbValue = Number(computeCB(route.ghg_intensity, route.fuel_consumption));
+  async execute(route: Route): Promise<{
+    shipId: string;
+    year: number;
+    cbGco2eq: number;
+    status: "Surplus" | "Deficit" | "Neutral";
+  }> {
+    if (!route) throw new ValidationError("Route data is required.");
 
-    let status: "Surplus" | "Deficit" | "Neutral" = "Neutral";
-    if (cbValue > 0) status = "Surplus";
-    else if (cbValue < 0) status = "Deficit";
+    const compliance = new ComplianceBalance(
+      route.routeId,
+      route.year,
+      route.ghgIntensity,
+      route.fuelConsumption
+    );
 
-    await prisma.ship_compliance.create({
-        data: {
-            ship_id: route.route_id,
-            year: route.year,
-            cb_gco2eq: cbValue,
-        },
+    const cbValue = compliance.compute();
+
+    await this.complianceRepository.create({
+      shipId: compliance.shipId,
+      year: compliance.year,
+      cbGco2eq: cbValue,
     });
 
-    return { cb_gco2eq: cbValue, status };
+    return {
+      shipId: compliance.shipId,
+      year: compliance.year,
+      cbGco2eq: cbValue,
+      status: compliance.isSurplus()
+        ? "Surplus"
+        : compliance.isDeficit()
+        ? "Deficit"
+        : "Neutral",
+    };
+  }
 }

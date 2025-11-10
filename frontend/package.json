@@ -12,6 +12,7 @@
   "dependencies": {
     "@tailwindcss/vite": "^4.1.17",
     "axios": "^1.13.2",
+    "big.js": "^7.0.1",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "recharts": "^3.3.0",
@@ -19,6 +20,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.36.0",
+    "@types/big.js": "^6.2.2",
     "@types/node": "^24.6.0",
     "@types/react": "^19.1.16",
     "@types/react-dom": "^19.1.9",

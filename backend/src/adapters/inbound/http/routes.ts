@@ -1,38 +1,58 @@
-import { Router } from "express";
-import { PrismaClient } from "@prisma/client";
-import { RouteRepoPrisma } from "../../outbound/postgres/RouteRepoPrisma";
+import { Router, Request, Response, NextFunction } from "express";
+import { RouteRepository } from "../../outbound/postgres/RouteRepository";
 import { computeComparison } from "../../../core/application/usecases/computeComparison";
 
-const prisma = new PrismaClient();
-const repo = new RouteRepoPrisma(prisma);
 const router = Router();
 
-router.get("/", async (_req, res) => {
-    const routes = await repo.findAll();
-    res.json(routes);
-});
+const routeRepo = new RouteRepository();
 
-router.post("/:id/baseline", async (req, res) => {
-    const id = parseInt(req.params.id);
-    const updated = await repo.setBaseline(id);
-    res.json(updated);
-});
-
-router.get("/comparison", async (req, res) => {
+router.get("/", async (_req:Request, res: Response, next: NextFunction) => {
     try {
-        const baseline = await repo.findBaseline();
-        const allRoutes = await repo.findAll();
-
-        if(!baseline){
-            return res.status(404).json({ error: "No baseline route found" });
-        }
-
-        const result = computeComparison(baseline, allRoutes);
-        res.json(result);
+        const routes = await routeRepo.findAll();
+        res.json({ data: routes });
     } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: "Failed to compute comparison" });
+        next(error);
     }
+});
+
+router.post("/:id/baseline", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const id = Number(req.params.id);
+    if (isNaN(id)) {
+      return res.status(400).json({ error: "Invalid route ID." });
+    }
+
+    const updated = await routeRepo.setBaseline(id);
+    if (!updated) {
+      return res.status(404).json({ error: "Route not found." });
+    }
+
+    res.json({ message: "Baseline route updated successfully.", data: updated });
+  } catch (err) {
+    next(err);
+  }
+});
+
+
+router.get("/comparison", async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const baseline = await routeRepo.findBaseline();
+    const allRoutes = await routeRepo.findAll();
+
+    if (!baseline) {
+      return res.status(404).json({ error: "No baseline route found." });
+    }
+
+    const { baseline: b, comparisons, target } = computeComparison(baseline, allRoutes);
+    res.json({
+      baseline: b,
+      targetIntensity: target,
+      totalRoutes: allRoutes.length,
+      comparisons,
+    });
+  } catch (err) {
+    next(err);
+  }
 });
 
 export default router;

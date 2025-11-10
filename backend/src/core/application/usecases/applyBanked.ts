@@ -1,49 +1,69 @@
-import { PrismaClient } from "@prisma/client";
-const prisma = new PrismaClient();
+import { IBankRepo } from "../../ports/outbound/IBankRepo";
+import { IShipComplianceRepo } from "../../ports/outbound/IShipComplianceRepo";
 
-export async function applyBanked(
-  ship_id: string,
-  year: number,
-  apply_amount: number
-) {
-  const banked = await prisma.bank_entries.findMany({
-    where: { ship_id }
-  });
+import {
+  EntityNotFoundError,
+  ValidationError,
+  BusinessRuleViolationError,
+} from "../../../shared/errors/DomainError";
 
-  const totalAvailable = banked.reduce(
-    (sum, b) => sum + b.amount_gco2eq,
-    0
-  );
+export class ApplyBanked {
+  constructor(
+    private bankRepository: IBankRepo,
+    private complianceRepository: IShipComplianceRepo
+  ) {}
 
-  if (apply_amount > totalAvailable)
-    throw new Error("Insufficient banked balance.");
+  async execute(
+    shipId: string,
+    year: number,
+    applyAmount: number
+  ): Promise<{ cbBefore: number; applied: number; cbAfter: number }> {
+    if (!shipId) throw new ValidationError("Ship ID is required.");
+    if (!year) throw new ValidationError("Year is required.");
+    if (applyAmount <= 0)
+      throw new ValidationError("Apply amount must be positive.");
 
-  let remaining = apply_amount;
-  for (const b of banked.sort((a, b) => a.year - b.year)) {
-    if (remaining <= 0) break;
-    const used = Math.min(b.amount_gco2eq, remaining);
-    await prisma.bank_entries.update({
-      where: { id: b.id },
-      data: { amount_gco2eq: b.amount_gco2eq - used }
+    const bankedEntries = await this.bankRepository.findAll();
+    const shipBanked = bankedEntries.filter((b) => b.shipId === shipId);
+
+    if (shipBanked.length === 0)
+      throw new EntityNotFoundError("Bank entries", shipId);
+
+    const totalAvailable = shipBanked.reduce((sum, b) => sum + b.amount, 0);
+    if (applyAmount > totalAvailable)
+      throw new BusinessRuleViolationError("Insufficient banked balance.");
+
+    let remaining = applyAmount;
+    const sorted = [...shipBanked].sort((a, b) => a.year - b.year);
+
+    for (const entry of sorted) {
+      if (remaining <= 0) break;
+      const used = Math.min(entry.amount, remaining);
+      entry.amount -= used;
+      remaining -= used;
+      await this.bankRepository.update(entry);
+    }
+
+    const complianceRecord = await this.complianceRepository.findByShipAndYear(
+      shipId,
+      year
+    );
+    if (!complianceRecord)
+      throw new EntityNotFoundError("ShipCompliance", `${shipId}-${year}`);
+
+    const cbBefore = complianceRecord.cbGco2eq;
+    const cbAfter = cbBefore + applyAmount;
+
+    await this.complianceRepository.create({
+      shipId,
+      year,
+      cbGco2eq: cbAfter,
     });
-    remaining -= used;
+
+    return {
+      cbBefore,
+      applied: applyAmount,
+      cbAfter,
+    };
   }
-
-  const cbRecord = await prisma.ship_compliance.findFirst({
-    where: { ship_id, year }
-  });
-
-  if (!cbRecord) throw new Error("No compliance record found for given year.");
-
-  const cb_after = cbRecord.cb_gco2eq + apply_amount;
-  await prisma.ship_compliance.update({
-    where: { id: cbRecord.id },
-    data: { cb_gco2eq: cb_after }
-  });
-
-  return {
-    cb_before: cbRecord.cb_gco2eq,
-    applied: apply_amount,
-    cb_after
-  };
 }

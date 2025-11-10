@@ -1,31 +1,29 @@
 import { Route } from "../../domain/Route";
+import { TARGET_INTENSITY } from "../../../shared/constants";
+import { ComparisonResult } from "../../../shared/types/ComparisonResult";
+import { EntityNotFoundError } from "../../../shared/errors/DomainError";
+import { Comparison } from "../../domain/Comparison";
+import { ComputeComparisonResponse } from "../../../shared/types/ComputeComparisonResponse";
 
-const TARGET_INTENSITY = 89.3368;
+export function computeComparison(baseline: Route, others: Route[]): ComputeComparisonResponse {
+    if(!baseline) throw new EntityNotFoundError("Route", "baseline");
+    if (!others || others.length === 0)
+    throw new EntityNotFoundError("Route", "comparison routes");
 
-export interface ComparisonResult {
-    route_id: string
-    ghg_intensity: number
-    percent_diff: number
-    compliant: boolean
-}
-
-export function computeComparison(baseline: Route, others: Route[]): { baseline: Route, comparisons: ComparisonResult[], target: number} {
-    if(!baseline) throw new Error("Baseline route not found");
-
-    const comparisons = others
-        .filter((r) => r.id != baseline.id)
+    const comparisons: ComparisonResult[] = others
+        .filter((r) => r.id !== baseline.id)
         .map((r) => {
-            const percent_diff = ((r.ghg_intensity / baseline.ghg_intensity) - 1) * 100;
-
-            const compliant = r.ghg_intensity <= TARGET_INTENSITY;
+            const comp = new Comparison(baseline, r);
+            const percentDiff = comp.percentDifference();
 
             return {
-                route_id: r.route_id,
-                ghg_intensity: r.ghg_intensity,
-                percent_diff: Number(percent_diff.toFixed(3)),
-                compliant,
+                routeId: r.routeId,
+                ghgIntensity: r.ghgIntensity,
+                percentDiff: Number(percentDiff.toFixed(3)),
+                compliant: comp.isCompliant(),
+                improved: comp.isImproved(),
             };
         });
 
-        return { baseline, comparisons, target: TARGET_INTENSITY };
+        return { baseline: baseline.toJSON(), comparisons, target: TARGET_INTENSITY };
 }

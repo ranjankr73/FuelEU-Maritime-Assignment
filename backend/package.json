@@ -4,12 +4,15 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "ts-node-dev --respawn --transpile-only src/infrastructure/server.ts",
+    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "build": "tsc",
-    "start": "node dist/infrastructure/server.js",
+    "start": "node dist/index.js",
     "migrate": "prisma migrate dev",
-    "seed": "ts-node src/infrastructure/seed.ts",
+    "seed": "ts-node src/infrastructure/db/seed.ts",
     "test": "jest --runInBand",
+    "test:watch": "jest --watch",
+    "test:unit": "jest --runInBand tests/unit",
+    "test:integration": "jest --runInBand tests/integration",
     "lint": "eslint . --ext .ts"
   },
   "keywords": [],

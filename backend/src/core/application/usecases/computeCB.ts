@@ -1,11 +1,23 @@
-import Big from "big.js";
+import { ComplianceBalance } from "../../domain/ComplianceBalance";
+import { TARGET_INTENSITY } from "../../../shared/constants";
+import { CBResult } from "../../../shared/types/CBResult";
+import { ValidationError } from "../../../shared/errors/DomainError";
 
-const TARGET_INTENSITY = Big(89.3368);
-const ENERGY_CONSTANT = Big(41000);
+export function computeCB(shipId: string, year: number, ghgIntensity: number, fuelConsumption: number): CBResult {
 
-export const computeCB = (ghgIntensity: number, fuelConsumption: number): string => {
-    const energy = Big(fuelConsumption).times(ENERGY_CONSTANT);
-    const cb = TARGET_INTENSITY.minus(ghgIntensity).times(energy);
+    if (!shipId) throw new ValidationError("shipId is required.");
+  if (!year) throw new ValidationError("year is required.");
+  if (ghgIntensity <= 0) throw new ValidationError("Invalid GHG intensity.");
+  if (fuelConsumption <= 0) throw new ValidationError("Fuel consumption must be positive.");
 
-    return cb.toFixed(6);
+    const cbEntity = new ComplianceBalance(shipId, year, ghgIntensity, fuelConsumption);
+    const cb = cbEntity.compute();
+
+    return {
+        cb,
+        status: cbEntity.isSurplus() ? "Surplus" : cbEntity.isDeficit() ? "Deficit" : "Neutral",
+        targetIntensity: TARGET_INTENSITY,
+        actualIntensity: ghgIntensity,
+        energyInScopeMJ: cbEntity.energyInScopeMJ(),
+    }
 }

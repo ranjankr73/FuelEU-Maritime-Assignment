@@ -1,90 +1,70 @@
-import { Router } from "express";
-import { PrismaClient } from "@prisma/client";
-import { RouteRepoPrisma } from "../../outbound/postgres/RouteRepoPrisma";
-import { calculateCompliance } from "../../../core/application/usecases/calculateCompliance";
+import { Router, Request, Response, NextFunction } from "express";
+import { RouteRepository } from "../../outbound/postgres/RouteRepository";
+import { ShipComplianceRepository } from "../../outbound/postgres/ShipComplianceRepository";
+import { CalculateCompliance } from "../../../core/application/usecases/calculateCompliance";
+import { ValidationError } from "../../../shared/errors/DomainError";
 
-const prisma = new PrismaClient();
-const repo = new RouteRepoPrisma(prisma);
 const router = Router();
 
-router.get("/cb", async (req, res) => {
-  try {
-    const { routeId, year } = req.query;
+const routeRepo = new RouteRepository();
+const complianceRepo = new ShipComplianceRepository();
 
-    if (!routeId || !year) {
-      return res.status(400).json({ error: "Missing routeId or year" });
-    }
+router.get(
+  "/cb",
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { shipId, year } = req.query;
+      if (!shipId || !year)
+        throw new ValidationError("Missing required query parameters: shipId and year");
 
-    const route = await prisma.routes.findFirst({
-      where: { route_id: String(routeId), year: Number(year) },
-    });
+      const route = await routeRepo.findByRouteId(String(shipId));
+      if (!route)
+        return res.status(404).json({ error: "Route not found for given shipId" });
 
-    if (!route) {
-      return res.status(404).json({ error: "Route not found" });
-    }
+      const useCase = new CalculateCompliance(complianceRepo);
+      const result = await useCase.execute(route);
 
-    const result = await calculateCompliance(route);
-    res.status(200).json({ routeId, year, ...result });
-  } catch (error) {
-    console.error("Error computing CB:", error);
-    res.status(500).json({ error: "Failed to compute compliance balance" });
-  }
-});
-
-router.get("/adjusted-cb", async (req, res) => {
-  try {
-    const { shipId, year } = req.query;
-
-    if (!year) {
-      return res.status(400).json({ error: "Missing required query parameter: year" });
-    }
-
-    const yearNum = Number(year);
-    if (Number.isNaN(yearNum)) {
-      return res.status(400).json({ error: "Invalid year value" });
-    }
-
-    if (shipId) {
-      const record = await prisma.ship_compliance.findFirst({
-        where: { ship_id: String(shipId), year: yearNum },
-        orderBy: { created_at: "desc" },
+      res.status(200).json({
+        message: "Compliance balance calculated successfully",
+        data: result,
       });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
 
-      if (!record) {
-        return res.status(404).json({ error: "No compliance record found for ship/year" });
+router.get(
+  "/adjusted-cb",
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { shipId, year } = req.query;
+      if (!year)
+        throw new ValidationError("Missing required query parameter: year");
+
+      const yearNum = Number(year);
+      if (Number.isNaN(yearNum))
+        throw new ValidationError("Invalid year value");
+
+      if (shipId) {
+        const record = await complianceRepo.findByShipAndYear(
+          String(shipId),
+          yearNum
+        );
+        if (!record)
+          return res
+            .status(404)
+            .json({ error: "No compliance record found for ship/year" });
+
+        return res.status(200).json({ data: record });
       }
 
-      return res.json({
-        shipId: record.ship_id,
-        year: record.year,
-        cb_gco2eq: record.cb_gco2eq,
-        createdAt: record.created_at,
-      });
-    } else {
-      const records = await prisma.ship_compliance.findMany({
-        where: { year: yearNum },
-        orderBy: { created_at: "desc" },
-      });
-
-      const latestMap = new Map<string, { shipId: string; year: number; cb_gco2eq: number; createdAt: Date }>();
-      for (const r of records) {
-        if (!latestMap.has(r.ship_id)) {
-          latestMap.set(r.ship_id, {
-            shipId: r.ship_id,
-            year: r.year,
-            cb_gco2eq: r.cb_gco2eq,
-            createdAt: r.created_at,
-          });
-        }
-      }
-
-      const result = Array.from(latestMap.values());
-      return res.json(result);
+      const records = await complianceRepo.findByYear(yearNum);
+      res.status(200).json({ count: records.length, data: records });
+    } catch (err) {
+      next(err);
     }
-  } catch (err: any) {
-    console.error("Error in GET /compliance/adjusted-cb:", err);
-    return res.status(500).json({ error: "Internal server error" });
   }
-});
+);
 
 export default router;

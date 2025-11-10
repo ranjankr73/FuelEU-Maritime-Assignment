@@ -1,17 +1,28 @@
-import { PrismaClient } from "@prisma/client";
-const prisma = new PrismaClient();
+import { Bank } from "../../domain/Bank";
+import { ValidationError } from "../../../shared/errors/DomainError";
+import { IBankRepo } from "../../ports/outbound/IBankRepo";
 
-export async function bankSurplus(
-  ship_id: string,
-  year: number,
-  amount_gco2eq: number
-) {
-  if (amount_gco2eq <= 0)
-    throw new Error("Only positive CB can be banked.");
+export class BankSurplus {
+  constructor(private bankRepository: IBankRepo) {}
 
-  const entry = await prisma.bank_entries.create({
-    data: { ship_id, year, amount_gco2eq }
-  });
+  async execute(
+    shipId: string,
+    year: number,
+    amountGco2eq: number
+  ) {
+    if (!shipId) throw new ValidationError("Ship ID is required.");
+    if (!year) throw new ValidationError("Year is required.");
+    if (amountGco2eq <= 0)
+      throw new ValidationError("Only positive CB can be banked.");
 
-  return entry;
+    const bank = new Bank(shipId, year, amountGco2eq);
+
+    const saved = await this.bankRepository.create(bank);
+
+    return {
+      shipId: saved.shipId,
+      year: saved.year,
+      amount: saved.amount,
+    };
+  }
 }

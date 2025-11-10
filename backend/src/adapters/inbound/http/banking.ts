@@ -1,119 +1,95 @@
-import { Router, Request, Response } from "express";
-import { PrismaClient, bank_entries } from "@prisma/client";
-import { bankSurplus } from "../../../core/application/usecases/bankSurplus";
-import { applyBanked } from "../../../core/application/usecases/applyBanked";
+import { Router, Request, Response, NextFunction } from "express";
+import { BankRepository } from "../../outbound/postgres/BankRepository";
+import { ShipComplianceRepository } from "../../outbound/postgres/ShipComplianceRepository";
+import { BankSurplus } from "../../../core/application/usecases/bankSurplus";
+import { ApplyBanked } from "../../../core/application/usecases/applyBanked";
+import { ValidationError } from "../../../shared/errors/DomainError";
 
-const prisma = new PrismaClient();
 const router = Router();
 
-// Request/Response types
-interface BankQueryParams {
-  shipId?: string;
-  year?: string;
-}
+const bankRepo = new BankRepository();
+const complianceRepo = new ShipComplianceRepository();
 
-interface BankSurplusRequest {
-  shipId: string;
-  year: number;
-  amount_gco2eq: number;
-}
+router.get(
+  "/records",
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { shipId, year } = req.query;
 
-interface ApplyBankedRequest {
-  shipId: string;
-  year: number;
-  applyAmount: number;
-}
+      if (!shipId)
+        throw new ValidationError("Missing required query parameter: shipId");
 
-interface ApplyBankedResponse {
-  cb_before: number;
-  applied: number;
-  cb_after: number;
-}
+      const yearNum = year ? Number(year) : undefined;
 
-interface ErrorResponse {
-  error: string;
-}
-
-// Custom error for validation
-class ValidationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'ValidationError';
-  }
-}
-
-router.get("/records", async (
-  req: Request<{}, {}, {}, BankQueryParams>,
-  res: Response<bank_entries[] | ErrorResponse>
-) => {
-  try {
-    const { shipId, year } = req.query;
-    if (!shipId) {
-      throw new ValidationError("shipId required");
-    }
-
-    const records = await prisma.bank_entries.findMany({
-      where: {
-        ship_id: String(shipId),
-        ...(year ? { year: Number(year) } : {})
+      let records = [];
+      if (yearNum) {
+        const record = await bankRepo.findByShipAndYear(String(shipId), yearNum);
+        records = record ? [record] : [];
+      } else {
+        const all = await bankRepo.findAll();
+        records = all.filter((b) => b.shipId === String(shipId));
       }
-    });
-    res.json(records);
-  } catch (error) {
-    if (error instanceof ValidationError) {
-      res.status(400).json({ error: error.message });
-    } else if (error instanceof Error) {
-      res.status(500).json({ error: error.message });
-    } else {
-      res.status(500).json({ error: 'An unexpected error occurred' });
+
+      if (records.length === 0)
+        return res
+          .status(404)
+          .json({ error: "No bank records found for given parameters" });
+
+      res.status(200).json({ count: records.length, data: records });
+    } catch (err) {
+      next(err);
     }
   }
-});
+);
 
-router.post("/bank", async (
-  req: Request<{}, {}, BankSurplusRequest>,
-  res: Response<bank_entries | ErrorResponse>
-) => {
-  try {
-    const { shipId, year, amount_gco2eq } = req.body;
-    if (!shipId || !year || amount_gco2eq == null) {
-      throw new ValidationError("shipId, year, amount_gco2eq required");
-    }
+router.post(
+  "/bank",
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { shipId, year, amountGco2eq } = req.body;
+      if (!shipId || !year || amountGco2eq === undefined)
+        throw new ValidationError("shipId, year, and amountGco2eq are required");
 
-    const entry = await bankSurplus(shipId, Number(year), Number(amount_gco2eq));
-    res.status(201).json(entry);
-  } catch (error) {
-    if (error instanceof ValidationError) {
-      res.status(400).json({ error: error.message });
-    } else if (error instanceof Error) {
-      res.status(400).json({ error: error.message });
-    } else {
-      res.status(500).json({ error: 'An unexpected error occurred' });
-    }
-  }
-});
+      const useCase = new BankSurplus(bankRepo);
+      const result = await useCase.execute(
+        String(shipId),
+        Number(year),
+        Number(amountGco2eq)
+      );
 
-router.post("/apply", async (
-  req: Request<{}, {}, ApplyBankedRequest>,
-  res: Response<ApplyBankedResponse | ErrorResponse>
-) => {
-  try {
-    const { shipId, year, applyAmount } = req.body;
-    if (!shipId || !year || applyAmount == null) {
-      throw new ValidationError("shipId, year, applyAmount required");
-    }
-
-    const result = await applyBanked(shipId, Number(year), Number(applyAmount));
-    res.json(result);
-  } catch (error) {
-    if (error instanceof ValidationError) {
-      res.status(400).json({ error: error.message });
-    } else if (error instanceof Error) {
-      res.status(400).json({ error: error.message });
-    } else {
-      res.status(500).json({ error: 'An unexpected error occurred' });
+      res.status(201).json({
+        message: "Surplus CB banked successfully",
+        data: result,
+      });
+    } catch (err) {
+      next(err);
     }
   }
-});
+);
+
+router.post(
+  "/apply",
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { shipId, year, applyAmount } = req.body;
+      if (!shipId || !year || applyAmount === undefined)
+        throw new ValidationError("shipId, year, and applyAmount are required");
+
+      const useCase = new ApplyBanked(bankRepo, complianceRepo);
+      const result = await useCase.execute(
+        String(shipId),
+        Number(year),
+        Number(applyAmount)
+      );
+
+      res.status(200).json({
+        message: "Banked surplus applied successfully",
+        data: result,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
 
 export default router;

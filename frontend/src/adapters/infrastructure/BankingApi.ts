@@ -1,47 +1,40 @@
 import api from "./apiClient";
+import type { IBanking } from "../../core/ports/IBanking";
+import type { BankRecord } from "../../shared/types/BankRecord";
+import type { ApplyResult } from "../../shared/types/ApplyResult";
 
-export interface CBResult {
-  shipId: string;
-  year: number;
-  cb_gco2eq: number;
-  status: "Surplus" | "Deficit" | "Neutral";
-}
-
-export interface BankRecord {
-  id: number;
-  shipId: string;
-  year: number;
-  amount_gco2eq: number;
-  createdAt: string;
-}
-
-export class BankingApi {
-  async getComplianceCB(routeId: string, year: number): Promise<CBResult> {
-    const res = await api.get(`/compliance/cb?routeId=${routeId}&year=${year}`);
-    return res.data;
+export class BankingApi implements IBanking {
+  async getBankingRecords(shipId: string, year?: number): Promise<BankRecord[]> {
+    const query = year
+      ? `/banking/records?shipId=${shipId}&year=${year}`
+      : `/banking/records?shipId=${shipId}`;
+    const { data } = await api.get<{ data: BankRecord[] }>(query);
+    return data.data;
   }
 
-  async getBankRecords(shipId: string, year?: number): Promise<BankRecord[]> {
-    const query = year ? `?shipId=${shipId}&year=${year}` : `?shipId=${shipId}`;
-    const res = await api.get(`/banking/records${query}`);
-    return res.data;
-  }
-
-  async bankSurplus(shipId: string, year: number, amount: number) {
-    const res = await api.post("/banking/bank", {
+  async bankSurplus(
+    shipId: string,
+    year: number,
+    amountGco2eq: number
+  ): Promise<BankRecord> {
+    const { data } = await api.post<{ data: BankRecord }>("/banking/bank", {
       shipId,
       year,
-      amount_gco2eq: amount,
+      amountGco2eq,
     });
-    return res.data;
+    return data.data;
   }
 
-  async applyBanked(shipId: string, year: number, applyAmount: number) {
-    const res = await api.post("/banking/apply", {
+  async applyBanked(
+    shipId: string,
+    year: number,
+    applyAmount: number
+  ): Promise<ApplyResult> {
+    const { data } = await api.post<{ data: ApplyResult }>("/banking/apply", {
       shipId,
       year,
       applyAmount,
     });
-    return res.data;
+    return data.data;
   }
 }

@@ -1,67 +1,42 @@
-import { Router, Request, Response } from "express";
-import { getAdjustedCB } from "../../../core/application/usecases/getAdjustedCB";
-import { createPool, PoolMemberInput } from "../../../core/application/usecases/createPool";
+import { Router, Request, Response, NextFunction } from "express";
+import { PoolRepository } from "../../outbound/postgres/PoolRepository";
+import { CreatePool } from "../../../core/application/usecases/createPool";
+import { ValidationError } from "../../../shared/errors/DomainError";
+import { PoolMember } from "../../../shared/types/PoolMemberInterface";
 
 const router = Router();
 
-// Types for request/response
-interface CreatePoolRequest {
-  year: number;
-  members: PoolMemberInput[];
-}
+const poolRepo = new PoolRepository();
 
-interface GetAdjustedCBResponse {
-  shipId: string;
-  cb_gco2eq: number;
-}
+router.post(
+  "/",
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { year, members } = req.body;
 
-// Get adjusted compliance balances for a year
-router.get("/compliance/adjusted-cb", async (req: Request<{}, {}, {}, { year?: string }>, res: Response<GetAdjustedCBResponse[] | { error: string }>) => {
-  try {
-    const { year } = req.query;
-    if (!year || isNaN(Number(year))) {
-      return res.status(400).json({ error: "Missing or invalid year" });
-    }
+      if (!year || !Array.isArray(members) || members.length === 0) {
+        throw new ValidationError("year and non-empty members[] are required");
+      }
 
-    const result = await getAdjustedCB(Number(year));
-    res.json(result);
-  } catch (e: any) {
-    res.status(500).json({ error: e.message });
-  }
-});
+      for (const m of members) {
+        if (typeof m.shipId !== "string" || typeof m.cbBefore !== "number") {
+          throw new ValidationError(
+            "Each pool member must include 'shipId' (string) and 'cbBefore' (number)"
+          );
+        }
+      }
 
-// Create a new compliance pool
-router.post("/pools", async (req: Request<{}, {}, CreatePoolRequest>, res: Response) => {
-  try {
-    const { year, members } = req.body;
+      const useCase = new CreatePool(poolRepo);
+      const result = await useCase.execute(Number(year), members as PoolMember[]);
 
-    if (!year || typeof year !== 'number') {
-      return res.status(400).json({ error: "Invalid year" });
-    }
-
-    if (!Array.isArray(members) || members.length === 0) {
-      return res.status(400).json({ error: "Members must be a non-empty array" });
-    }
-
-    // Validate member structure
-    const isValidMember = (m: any): m is PoolMemberInput => 
-      typeof m === 'object' && 
-      typeof m.ship_id === 'string' && 
-      typeof m.cb_before === 'number';
-
-    if (!members.every(isValidMember)) {
-      return res.status(400).json({ 
-        error: "Invalid member format. Each member must have ship_id (string) and cb_before (number)" 
+      return res.status(201).json({
+        message: "Pool created successfully",
+        data: result,
       });
+    } catch (err) {
+      next(err);
     }
-
-    const result = await createPool(year, members);
-    res.status(201).json(result);
-  } catch (e: any) {
-    // Use 400 for validation errors, 500 for unexpected errors
-    const status = e.message.includes("Invalid pool") ? 400 : 500;
-    res.status(status).json({ error: e.message });
   }
-});
+);
 
 export default router;

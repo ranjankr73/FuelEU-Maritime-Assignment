@@ -1,30 +1,21 @@
 import api from "./apiClient";
+import type { IPools } from "../../core/ports/IPools";
+import type { Pool } from "../../core/domain/Pool";
+import type { PoolMember } from "../../shared/types/PoolMember";
 
-export interface AdjustedCB {
-  shipId: string;
-  cb_gco2eq: number;
-}
-
-export interface PoolMember {
-  shipId: string;
-  cb_before: number;
-}
-
-export interface PoolResult {
-  poolId: number;
-  year: number;
-  poolSum: number;
-  members: { shipId: string; cb_before: number; cb_after: number }[];
-}
-
-export class PoolingApi {
-  async getAdjustedCB(year: number): Promise<AdjustedCB[]> {
-    const res = await api.get(`/compliance/adjusted-cb?year=${year}`);
-    return res.data;
+export class PoolsApi implements IPools {
+  async createPool(year: number, members: PoolMember[]): Promise<Pool> {
+    const { data } = await api.post<{ data: Pool }>("/pools", { year, members });
+    return data.data;
   }
 
-  async createPool(year: number, members: PoolMember[]): Promise<PoolResult> {
-    const res = await api.post("/pools", { year, members });
-    return res.data;
-  }
+  // async getAllPools(): Promise<Pool[]> {
+  //   const { data } = await api.get<{ data: Pool[] }>("/pools");
+  //   return data.data;
+  // }
+
+  // async getPoolsByYear(year: number): Promise<Pool[]> {
+  //   const { data } = await api.get<{ data: Pool[] }>(`/pools?year=${year}`);
+  //   return data.data;
+  // }
 }
